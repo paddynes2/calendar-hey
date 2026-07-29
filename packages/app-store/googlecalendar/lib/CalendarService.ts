@@ -271,7 +271,14 @@ export default class GoogleCalendarService implements Calendar {
           calendarId: selectedCalendar,
           requestBody: payload,
           conferenceDataVersion: 1,
-          sendUpdates: "none",
+          // PN-FIX-1: notification must be ATOMIC with event creation. With
+          // "none", Google commits the event and its Meet link while cal.com
+          // owns the only notification path -- so any post-insert failure in
+          // this service leaves a real, joinable meeting that nobody was told
+          // about. That silently cost four booked prospects between 2026-03
+          // and 2026-07. "all" makes Google issue the invite in the same call
+          // that creates the event, so the two cannot desync.
+          sendUpdates: "all",
         });
         event = eventResponse.data;
         if (event.recurrence) {
@@ -283,17 +290,31 @@ export default class GoogleCalendarService implements Calendar {
       }
 
       if (event && event.id && event.hangoutLink) {
-        await calendar.events.patch({
-          // Update the same event but this time we know the hangout link
-          calendarId: selectedCalendar,
-          eventId: event.id || "",
-          requestBody: {
-            description: getRichDescription({
-              ...calEvent,
-              additionalInformation: { hangoutLink: event.hangoutLink },
-            }),
-          },
-        });
+        // PN-FIX-2: this patch only refreshes the DESCRIPTION text now that the
+        // hangout link is known. The event and the Meet link are already
+        // committed above, so a failure here is cosmetic. It used to be fatal:
+        // the throw propagated to the catch below, EventManager recorded
+        // success:false for the whole integration, and the booker was never
+        // emailed despite having a perfectly good meeting. Never let a
+        // cosmetic refresh fail a booking.
+        try {
+          await calendar.events.patch({
+            // Update the same event but this time we know the hangout link
+            calendarId: selectedCalendar,
+            eventId: event.id || "",
+            requestBody: {
+              description: getRichDescription({
+                ...calEvent,
+                additionalInformation: { hangoutLink: event.hangoutLink },
+              }),
+            },
+          });
+        } catch (patchError) {
+          this.log.error(
+            "Non-fatal: could not patch description with hangoutLink; event is already created",
+            safeStringify({ patchError, selectedCalendar, credentialId })
+          );
+        }
       }
 
       return {
@@ -378,7 +399,9 @@ export default class GoogleCalendarService implements Calendar {
         calendarId: selectedCalendar,
         eventId: uid,
         sendNotifications: true,
-        sendUpdates: "none",
+        // PN-FIX-1 (reschedule): same desync risk as creation. A moved meeting
+        // whose attendee is never told is worse than one that was never booked.
+        sendUpdates: "all",
         requestBody: payload,
         conferenceDataVersion: 1,
       });
@@ -433,7 +456,9 @@ export default class GoogleCalendarService implements Calendar {
         calendarId: selectedCalendar,
         eventId: uid,
         sendNotifications: false,
-        sendUpdates: "none",
+        // PN-FIX-1 (cancellation): an attendee who is never told a meeting was
+        // cancelled still shows up. Google issues the cancellation atomically.
+        sendUpdates: "all",
       });
       return event?.data;
     } catch (error) {

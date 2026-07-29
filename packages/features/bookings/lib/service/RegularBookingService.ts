@@ -2080,6 +2080,41 @@ async function handler(
         `EventManager.create failure in some of the integrations ${organizerUser.username}`,
         safeStringify({ error, results })
       );
+
+      // PN-FIX-3: this branch reads as "EVERY integration failed", but with a
+      // single calendar credential `every()` is satisfied by one transient
+      // blip -- so a routine hiccup took the catastrophic path. The only call
+      // to emailsAndSmsHandler.send(confirmed) lived in the `else`, which meant
+      // the booking was still created and accepted while the booker and the
+      // organizer were both told nothing at all. Silence is the worst possible
+      // degradation. Send the confirmation anyway; without a video link it is
+      // strictly more useful than nothing, and it lets the booker reply.
+      if (!noEmail && !isDryRun && !(eventType.seatsPerTimeSlot && rescheduleUid)) {
+        try {
+          await emailsAndSmsHandler.send({
+            action: BookingActionMap.confirmed,
+            data: {
+              eventType: {
+                metadata: eventType.metadata,
+                schedulingType: eventType.schedulingType,
+              },
+              eventNameObject,
+              workflows,
+              evt,
+              additionalInformation: {},
+              additionalNotes,
+              customInputs,
+            },
+          });
+        } catch (degradedEmailError) {
+          // Never let the fallback notification throw: today's behaviour is
+          // no email at all, so a failure here can only match that, not worsen it.
+          loggerWithEventDetails.error(
+            "Failed to send degraded confirmation after integration failure",
+            safeStringify({ degradedEmailError })
+          );
+        }
+      }
     } else {
       const additionalInformation: AdditionalInformation = {};
 

@@ -648,3 +648,14 @@ html[dir="rtl"] .react-tel-input .flag-dropdown {
   left: auto !important;
   right: 0 !important;
 }
+
+/* PN: full-page photo behind the public booking modal (not embeds) */
+html:has(main.pn-booker-bg) {
+  background: #1a1a1a url("/booking-bg.jpg") center / cover no-repeat fixed !important;
+}
+html:has(main.pn-booker-bg) body {
+  background: transparent !important;
+}
+main.pn-booker-bg [data-testid="booker-container"] {
+  box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.45);
+}

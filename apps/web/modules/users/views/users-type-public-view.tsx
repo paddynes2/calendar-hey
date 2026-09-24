@@ -29,7 +29,8 @@ function Type({ slug, user, isEmbed, booking, isBrandingHidden, eventData, orgBa
 
   return (
     <BookingPageErrorBoundary>
-      <main className={getBookerWrapperClasses({ isEmbed: !!isEmbed })}>
+      <main
+        className={`${getBookerWrapperClasses({ isEmbed: !!isEmbed })} ${!isEmbed ? "pn-booker-bg" : ""}`}>
         <Booker
           username={user}
           eventSlug={slug}

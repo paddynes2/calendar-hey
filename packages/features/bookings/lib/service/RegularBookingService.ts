@@ -1192,7 +1192,17 @@ async function handler(
     ? process.env.BLACKLISTED_GUEST_EMAILS.split(",")
     : [];
 
-  const guestEmails = (reqGuests || []).map((email) => extractBaseEmail(email).toLowerCase());
+  // PN-FIX-4: event types that always carry a fixed guest, whatever the booker enters.
+  // EventType 11 = "chat": Wesley is on every Chat booking alongside Patrick.
+  const PN_ALWAYS_INVITE: Record<number, string[]> = { 11: ["wesley@autospark.ai"] };
+  const alwaysInvite = (PN_ALWAYS_INVITE[eventType.id] || []).filter(
+    (extra) =>
+      extra.toLowerCase() !== String(bookerEmail).toLowerCase() &&
+      !(reqGuests || []).some((g) => g.toLowerCase() === extra.toLowerCase())
+  );
+  const reqGuestsWithFixed = [...(reqGuests || []), ...alwaysInvite];
+
+  const guestEmails = reqGuestsWithFixed.map((email) => extractBaseEmail(email).toLowerCase());
   const guestUsers = await deps.userRepository.findManyByEmailsWithEmailVerificationSettings({
     emails: guestEmails,
   });
@@ -1204,7 +1214,7 @@ async function handler(
   }
 
   const guestsRemoved: string[] = [];
-  const guests = (reqGuests || []).reduce((guestArray, guest) => {
+  const guests = reqGuestsWithFixed.reduce((guestArray, guest) => {
     const baseGuestEmail = extractBaseEmail(guest).toLowerCase();
 
     if (blacklistedGuestEmails.some((e) => e.toLowerCase() === baseGuestEmail)) {

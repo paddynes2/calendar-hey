@@ -1,5 +1,6 @@
 import short, { uuid } from "short-uuid";
 import { v5 as uuidv5 } from "uuid";
+import { pnWithFixedGuests } from "./pnFixedGuests";
 
 import processExternalId from "@calcom/app-store/_utils/calendars/processExternalId";
 import { getPaymentAppData } from "@calcom/app-store/_utils/payments/getPaymentAppData";
@@ -1192,18 +1193,11 @@ async function handler(
     ? process.env.BLACKLISTED_GUEST_EMAILS.split(",")
     : [];
 
-  // PN-FIX-4: event types that always carry a fixed guest, whatever the booker enters.
-  // EventType 11 = "chat": Wesley is on every Chat booking alongside Patrick.
-  const PN_ALWAYS_INVITE: Record<number, string[]> = { 11: ["wesley@autospark.ai"] };
-  const reqGuestsWithFixed: string[] = [...((reqGuests as string[] | undefined) || [])];
-  const pnBooker: string = String(bookerEmail).toLowerCase();
-  for (const extra of PN_ALWAYS_INVITE[eventType.id as number] || []) {
-    const lower: string = extra.toLowerCase();
-    if (lower === pnBooker) continue;
-    if (reqGuestsWithFixed.some((g: string) => g.toLowerCase() === lower)) continue;
-    reqGuestsWithFixed.push(extra);
-  }
-
+  const reqGuestsWithFixed: string[] = pnWithFixedGuests(
+    eventType.id as unknown,
+    bookerEmail as unknown,
+    reqGuests as unknown
+  );
   const guestEmails = reqGuestsWithFixed.map((email) => extractBaseEmail(email).toLowerCase());
   const guestUsers = await deps.userRepository.findManyByEmailsWithEmailVerificationSettings({
     emails: guestEmails,

@@ -1195,12 +1195,14 @@ async function handler(
   // PN-FIX-4: event types that always carry a fixed guest, whatever the booker enters.
   // EventType 11 = "chat": Wesley is on every Chat booking alongside Patrick.
   const PN_ALWAYS_INVITE: Record<number, string[]> = { 11: ["wesley@autospark.ai"] };
-  const alwaysInvite = (PN_ALWAYS_INVITE[eventType.id] || []).filter(
-    (extra) =>
-      extra.toLowerCase() !== String(bookerEmail).toLowerCase() &&
-      !(reqGuests || []).some((g) => g.toLowerCase() === extra.toLowerCase())
-  );
-  const reqGuestsWithFixed = [...(reqGuests || []), ...alwaysInvite];
+  const reqGuestsWithFixed: string[] = [...((reqGuests as string[] | undefined) || [])];
+  const pnBooker: string = String(bookerEmail).toLowerCase();
+  for (const extra of PN_ALWAYS_INVITE[eventType.id as number] || []) {
+    const lower: string = extra.toLowerCase();
+    if (lower === pnBooker) continue;
+    if (reqGuestsWithFixed.some((g: string) => g.toLowerCase() === lower)) continue;
+    reqGuestsWithFixed.push(extra);
+  }
 
   const guestEmails = reqGuestsWithFixed.map((email) => extractBaseEmail(email).toLowerCase());
   const guestUsers = await deps.userRepository.findManyByEmailsWithEmailVerificationSettings({
